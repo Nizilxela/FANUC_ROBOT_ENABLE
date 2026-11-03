@@ -1,177 +1,164 @@
-﻿FUNCTION_BLOCK "ROBOT_ENABLE"
+FUNCTION_BLOCK "ROBOT_ENABLE"
 { S7_Optimized_Access := 'TRUE' }
-VERSION : 0.2
-   VAR_INPUT
+VERSION : 0.1
+   VAR_INPUT 
       AVTO : Bool;
-      GATE_LEFT : Bool;   // левая калитка открыта (TRUE = открыта)
-      GATE_RIGHT : Bool;  // правая калитка открыта (TRUE = открыта)
-      GATE_PAD : Bool;    // полярность: TRUE = ??? (заполнить при подключении!)
-      ROBOT_LEFT : Bool;  // левый барьер
-      ROBOT_RIGHT : Bool; // правый барьер
-      PROG_NUM : Byte;            // номер программы
-      RESET : Bool;               // сброс
-      RESET_GATE : Bool;          // сброс от калитки
-      RESET_ROBOT_PROG : Bool;    // кнопка сброса программы робота
-      BUTTON_RESET_ROBOT : Bool;  // кнопка сброса ошибок
-      START_PERMIT : Bool;        // разрешение запуска цикла (деталь на месте и т.п.); TRUE = разрешено
+      GATE_LEFT : Bool;   // левая калитка открыта
+      GATE_RIGHT : Bool;   // правая калитка открыта
+      GATE_PAD : Bool;
+      ROBOT_LEFT : Bool;   // левый барьер
+      ROBOT_RIGHT : Bool;   // правый барьер
+	  PROG_NUM : Byte; // номер программы
+	  RESET : Bool; // сброс
+	  RESET_GATE : Bool; // сброс от калитки
+	  RESET_ROBOT_PROG : Bool;   // кнопка сброса програмы робота
+	  BUTTON_RESET_ROBOT : Bool; // кнопка сброса ошибок
+
+
+   END_VAR
+   
+   VAR_IN_OUT 
+      UI_ENABLE : Bool;   // включение робота
+	  UI_SFSPD : Bool; //остановка робота если калитка открыта нормальное состояние ON
+	  UI_HOLD : Bool; // Сигнал временного останова нормальное состояние ON
+	  UI_IMST : Bool; // Немедленный останов нормальное состояние ON
+	  UI_RSP_PNS : Byte; // выбор программы запуска
+	  UI_START : Bool; // запуск программы
+	  UI_CYCLE_STOP : Bool; //!!!СБРОС ПРОГРАММЫ РОБОТА!!!
+	  UI_FAULT_RESET : Bool; // сброс аварий робота
+	  UO_TP_ENABLE : Bool; // ключен пульт оператора
+	  UO_CMD_ENABLE : Bool; // робот готов к запуску программы
+	  UO_SYSTEM_READY : Bool; // есть питание на сервоусилителях
+	  UO_PRG_PAUSED : Bool; // программа на паузе
+	  UO_FAULT : Bool; // авария робот
+	  UO_PRG_RUNNING : Bool; // программа запущена
+	  ROBOT_ENABLE : Bool; // робот готов к запуску программы
+
+	
    END_VAR
 
-   VAR_IN_OUT
-      UI_ENABLE : Bool;       // включение робота
-      UI_SFSPD : Bool;        // остановка робота по барьерам, нормальное состояние ON
-      UI_HOLD : Bool;         // сигнал временного останова, нормальное состояние ON
-      UI_IMST : Bool;         // немедленный останов, нормальное состояние ON
-      UI_RSP_PNS : Byte;      // выбор программы запуска
-      UI_START : Bool;        // запуск программы
-      UI_CYCLE_STOP : Bool;   // СБРОС ПРОГРАММЫ РОБОТА
-      UI_FAULT_RESET : Bool;  // сброс аварий робота
-      UO_TP_ENABLE : Bool;    // включен пульт оператора
-      UO_CMD_ENABLE : Bool;   // робот готов к запуску программы
-      UO_SYSTEM_READY : Bool; // есть питание на сервоусилителях
-      UO_PRG_PAUSED : Bool;   // программа на паузе
-      UO_FAULT : Bool;        // авария робот
-      UO_PRG_RUNNING : Bool;  // программа запущена
-      ROBOT_ENABLE : Bool;    // робот готов к запуску программы
-   END_VAR
-
-   VAR
+   VAR 
       DEF_IN_LEFT {InstructionName := 'TON_TIME'; LibVersion := '1.0'} : TON_TIME;   // защита входа слева
-      DEF_IN_RIGHT {InstructionName := 'TON_TIME'; LibVersion := '1.0'} : TON_TIME;  // защита входа справа
-      DELAY_START_PROG {InstructionName := 'TON_TIME'; LibVersion := '1.0'} : TON_TIME; // выдержка старт-импульса
-      RESET_FROM_PROG {InstructionName := 'TP_TIME'; LibVersion := '1.0'} : TP_TIME;    // импульс сброса ошибок после сброса программы
-      PULSE_CYCLE_STOP {InstructionName := 'TP_TIME'; LibVersion := '1.0'} : TP_TIME;   // импульс сброса программы с кнопки
-      step { S7_SetPoint := 'True'} : Int; // шаги запуска автомата
-      count_start : Int; // попытки запуска программы
-      flag_reset : Bool; // сброс ошибок
-      flag_start : Bool; // старт программы
+      DEF_IN_RIGHT {InstructionName := 'TON_TIME'; LibVersion := '1.0'} : TON_TIME;   // защита входа справа
+	  DELAY_START_PROG {InstructionName := 'TON_TIME'; LibVersion := '1.0'} : TON_TIME;   // таймер задержки отключения старта програмы
+	  RESET_FROM_PROG {InstructionName := 'TP_TIME'; LibVersion := '1.0'} : TP_TIME;   // импульс сброса ошибок после сброса програмы
+	  step { S7_SetPoint := 'True'} : Int;   // шаги запуска автомата
+	  count_start : Int;   // попытки запуска програмы
+      flag_reset : Bool;   // сброс ошибок
+      flag_start : Bool;   // старт програмы
+
    END_VAR
+
 
 BEGIN
-    REGION защита входа
-        // Барьеры маскируются при легально открытой калитке:
-        // нарушение игнорируется, пока калитка открыта.
-        // Реальная остановка — аппаратным контуром безопасности.
-        #DEF_IN_LEFT(IN := #ROBOT_LEFT AND NOT #GATE_LEFT,
+	REGION запуск робота
+	    
+	    #UI_ENABLE := "AlwaysTRUE";//включить робота когда включен плк
+	    
+	    #UI_SFSPD := (NOT #DEF_IN_LEFT.Q AND//отключение если неисправен барьер или нарушен при открытой калитке
+	    NOT #DEF_IN_RIGHT.Q AND
+	     #GATE_PAD) OR
+	    "UO_8_TP_enable";
+	    
+	    #UI_HOLD:=#UI_ENABLE;// всегда активен если включен ПЛК и робот. Мягкий останов выключает активные дискретные сигналы робота.
+	    
+	    #UI_IMST := #AVTO OR
+	    #UO_TP_ENABLE;//всегда включен если режим авто или включен пульт
+	    
+	    #UI_RSP_PNS := PROG_NUM;
+	    
+	END_REGION
+	
+	REGION защита входа
+	    
+	    #DEF_IN_LEFT(IN:=#ROBOT_LEFT AND//задержка слева
+	                 NOT #GATE_LEFT,
+	                 PT:=T#200ms);
+	    
+	    #DEF_IN_RIGHT(IN :=#ROBOT_RIGHT AND//задержка справа
+	                  NOT #GATE_RIGHT,
+	                  PT := T#200ms);
+	    
+	END_REGION
+
+	REGION Запуск программы и управление роботом
+	 
+	 // Готовность робота к запуску
+	#ROBOT_ENABLE := UO_CMD_ENABLE AND
+    UO_SYSTEM_READY;
+  
+    // При выходе из автомата — сброс шагов и управляющих флагов
+    IF NOT #AVTO THEN
+        #step := 0;
+        #count_start := 0;
+        #flag_reset := FALSE;
+        #flag_start := FALSE;
+    END_IF;
+    
+    IF #AVTO THEN
+        
+        CASE #step OF
+                
+            0: // Ожидание готовности к запуску
+                IF #UO_PRG_PAUSED OR
+                    #UO_FAULT THEN
+                    #flag_reset := TRUE;
+                END_IF;
+                IF #ROBOT_ENABLE AND NOT #UO_PRG_RUNNING AND #count_start<5 THEN
+                    #count_start := #count_start + 1;
+                    #flag_reset := FALSE;
+                    #step := 10;
+                END_IF;
+                
+            10: // Выдержка импульса сброса ошибок робота
+                IF #ROBOT_ENABLE AND
+                    NOT #UO_FAULT THEN
+                    #flag_reset := FALSE;
+                    #flag_start := TRUE;
+                    #step := 20;
+                END_IF;
+                
+            20: // Выдержка старт-импульса и проверка запуска
+                IF #DELAY_START_PROG.Q THEN
+                    #flag_start := FALSE;
+                    
+                    IF #UO_PRG_RUNNING THEN
+                        #count_start := 0;
+                        #step := 30; // Переход в состояние контроля работы
+                    ELSE
+                        #step := 0;  // Повторная попытка запуска
+                    END_IF;
+                END_IF;
+                
+            30: // Программа работает
+                IF NOT #UO_PRG_RUNNING THEN
+                    #step := 0; // Возврат в исходное при останове программы
+                END_IF;
+                
+        END_CASE;
+        
+    END_IF;
+    
+    // Безопасное формирование сигнала запуска FANUC (UI[6])
+    #UI_START := #AVTO AND #flag_start;
+    
+    // Таймеры выдержки импульсов (должны быть инстансами TON_TIME)
+    #DELAY_START_PROG(IN := #flag_start,
+                      PT := T#500ms);
+    
+	// сбросы
+    #UI_CYCLE_STOP := #RESET_ROBOT_PROG;
+    
+    #RESET_FROM_PROG(IN := #flag_reset OR #UI_CYCLE_STOP,
                      PT := T#200ms);
-
-        #DEF_IN_RIGHT(IN := #ROBOT_RIGHT AND NOT #GATE_RIGHT,
-                      PT := T#200ms);
-    END_REGION
-
-    REGION запуск робота
-        #UI_ENABLE := TRUE; // включить робота, когда включен ПЛК
-
-        // Отключение при неисправном/нарушенном барьере.
-        // При работе с пульта защита SFSPD обходится сознательно.
-        #UI_SFSPD := (NOT #DEF_IN_LEFT.Q AND
-                      NOT #DEF_IN_RIGHT.Q AND
-                      #GATE_PAD) OR
-                     #UO_TP_ENABLE;
-
-        // Мягкий останов активен всегда, когда включен ПЛК и робот.
-        #UI_HOLD := #UI_ENABLE;
-
-        // Немедленный останов активен в авто или при работе с пульта.
-        #UI_IMST := #AVTO OR
-                    #UO_TP_ENABLE;
-
-        // Выбор программы передаётся постоянно; при работе с пульта
-        // робот игнорирует UI[18] — конфликт с PNS пенданта не возникает.
-        #UI_RSP_PNS := #PROG_NUM;
-    END_REGION
-
-    REGION запуск программы и управление роботом
-        // Готовность робота к запуску
-        #ROBOT_ENABLE := #UO_CMD_ENABLE AND
-                         #UO_SYSTEM_READY;
-
-        // Импульс сброса программы с кнопки: удержание кнопки не должно
-        // непрерывно дёргать робота сбросами
-        #PULSE_CYCLE_STOP(IN := #RESET_ROBOT_PROG,
-                          PT := T#200ms);
-
-        // Сброс аварий: явные кнопки + импульс после сброса программы
-        #UI_FAULT_RESET := #RESET OR
-                           #RESET_GATE OR
-                           #RESET_FROM_PROG.Q OR
-                           #BUTTON_RESET_ROBOT;
-
-        // Сброс счётчика попыток вместе со сбросом ошибок,
-        // чтобы после неудачных пусков автомат оживал по кнопке сброса
-        IF #RESET OR #RESET_GATE OR #RESET_FROM_PROG.Q OR #BUTTON_RESET_ROBOT THEN
-            #count_start := 0;
-        END_IF;
-
-        // При выходе из авто — сброс шагов и управляющих флагов
-        IF NOT #AVTO THEN
-            #step := 0;
-            #count_start := 0;
-            #flag_reset := FALSE;
-            #flag_start := FALSE;
-        END_IF;
-
-        IF #AVTO THEN
-            CASE #step OF
-
-                0: // Ожидание готовности к запуску
-                    IF #UO_PRG_PAUSED OR
-                       #UO_FAULT THEN
-                        #flag_reset := TRUE;
-                    END_IF;
-                    IF #ROBOT_ENABLE AND
-                       NOT #UO_PRG_RUNNING AND
-                       #START_PERMIT AND      // убрать, если нужен непрерывный автоцикл
-                       #count_start < 5 THEN
-                        #count_start := #count_start + 1;
-                        #flag_reset := FALSE;
-                        #step := 10;
-                    END_IF;
-
-                10: // Выдержка импульса сброса ошибок робота
-                    IF #ROBOT_ENABLE AND
-                       NOT #UO_FAULT THEN
-                        #flag_reset := FALSE;
-                        #flag_start := TRUE;
-                        #step := 20;
-                    END_IF;
-
-                20: // Выдержка старт-импульса и проверка запуска
-                    IF NOT #ROBOT_ENABLE THEN
-                        // Разрешение ушло во время выдержки — вернуться
-                        #flag_start := FALSE;
-                        #step := 0;
-                    ELSIF #DELAY_START_PROG.Q THEN
-                        #flag_start := FALSE;
-                        IF #UO_PRG_RUNNING THEN
-                            #count_start := 0;
-                            #step := 30; // Переход в состояние контроля работы
-                        ELSE
-                            #step := 0;  // Повторная попытка запуска
-                        END_IF;
-                    END_IF;
-
-                30: // Программа работает
-                    IF NOT #UO_PRG_RUNNING THEN
-                        #step := 0; // Возврат в исходное при останове программы
-                    END_IF;
-
-            END_CASE;
-        END_IF;
-
-        // Безопасное формирование сигнала запуска FANUC (UI[6]):
-        // старт подаётся только при живом разрешении
-        #UI_START := #AVTO AND #flag_start AND #ROBOT_ENABLE;
-
-        // Таймер выдержки старт-импульса
-        #DELAY_START_PROG(IN := #flag_start,
-                          PT := T#500ms);
-
-        // Сброс программы робота — через импульс
-        #UI_CYCLE_STOP := #PULSE_CYCLE_STOP.Q;
-
-        // Импульс сброса ошибок после сброса программы
-        #RESET_FROM_PROG(IN := #PULSE_CYCLE_STOP.Q,
-                         PT := T#200ms);
-    END_REGION
+    
+    #UI_FAULT_RESET := #RESET OR
+    #RESET_GATE OR
+    #RESET_FROM_PROG.Q OR
+    #BUTTON_RESET_ROBOT;
+    
+END_REGION
 
 END_FUNCTION_BLOCK
+
+
